@@ -1,0 +1,28 @@
+{
+  "name": "@javinfo/mcp",
+  "version": "0.0.1",
+  "description": "MCP server placeholder for javinfo. Code coming soon.",
+  "private": false,
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "echo \"build pending\""
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/javinfo/mcp.git"
+  },
+  "keywords": [
+    "mcp",
+    "javinfo"
+  ]
+}
