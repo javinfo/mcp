@@ -12,7 +12,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "echo \"build pending\""
+    "build": "echo \"build pending\"",
+    "release": "release-it"
   },
   "publishConfig": {
     "access": "public"
@@ -24,5 +25,27 @@
   "keywords": [
     "mcp",
     "javinfo"
-  ]
+  ],
+  "devDependencies": {
+    "release-it": "^17.10.0",
+    "@release-it/conventional-changelog": "^8.0.1"
+  },
+  "release-it": {
+    "git": {
+      "commitMessage": "chore(release): v${version}"
+    },
+    "github": {
+      "release": false
+    },
+    "npm": {
+      "publish": true,
+      "skipChecks": false
+    },
+    "plugins": {
+      "@release-it/conventional-changelog": {
+        "preset": "angular",
+        "infile": "CHANGELOG.md"
+      }
+    }
+  }
 }
