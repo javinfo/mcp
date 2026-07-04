@@ -10,6 +10,8 @@ jobs:
   publish:
     name: Publish @javinfo/mcp to npm
     runs-on: ubuntu-latest
+    # Auto-publish guard: always allow manual dispatch; push-trigger gated behind PUBLISH_ENABLED=true
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.PUBLISH_ENABLED == 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
