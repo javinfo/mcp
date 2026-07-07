@@ -1,5 +1,12 @@
 
 
+## [0.3.2](https://github.com/javinfo/mcp/compare/0.3.1...0.3.2) (2026-07-07)
+
+
+### Bug Fixes
+
+* always start server; drop entry guard that broke npx ([bfc9c93](https://github.com/javinfo/mcp/commit/bfc9c936f1ea89faaf1b28a12fe9afb962990444))
+
 ## [0.3.1](https://github.com/javinfo/mcp/compare/0.3.0...0.3.1) (2026-07-07)
 
 
