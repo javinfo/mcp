@@ -36,7 +36,9 @@ async function postJavinfo(
 
 // --- output schemas (exported for tests) ----------------------------------
 // Permissive + forward-compatible so any provider's shape validates.
-const PROVIDERS = ["r18", "javdb", "missav", "javdatabase"] as const;
+// javdb is code-only: valid on /movie, NOT on /query (list search).
+const MOVIE_PROVIDERS = ["r18", "javdb", "missav", "javdatabase"] as const;
+const SEARCH_PROVIDERS = ["r18", "missav", "javdatabase"] as const;
 const nstr = z.string().nullable().optional();
 const strArr = z.array(z.string()).optional();
 
@@ -224,12 +226,21 @@ export function fmtMovie(json: any, includeImages = false): string {
 // --- server ---------------------------------------------------------------
 // Shared: which upstream sources to try. r18/javdatabase = metadata,
 // javdb = magnet/download links + score, missav = HLS (.m3u8) streams.
-const providersSchema = z
-  .union([z.enum(PROVIDERS), z.array(z.enum(PROVIDERS))])
-  .optional()
-  .describe(
-    'Restrict upstream providers (single or array). "r18" (bilingual metadata), "javdb" (download links + torrents), "missav" (m3u8 streams), "javdatabase" (description + samples). Default: try all.',
-  );
+const providersArg = (opts: readonly string[], note: string) =>
+  z
+    .union([z.enum(opts as [string, ...string[]]), z.array(z.enum(opts as [string, ...string[]]))])
+    .optional()
+    .describe(note);
+
+// javdb download links come from javinfo-movie, not search (javdb is code-only).
+const searchProvidersSchema = providersArg(
+  SEARCH_PROVIDERS,
+  'Restrict list-search providers (single or array). "r18" (metadata + free-text), "missav" (m3u8), "javdatabase" (samples). javdb is NOT available here — use javinfo-movie for download links. Default: try all.',
+);
+const movieProvidersSchema = providersArg(
+  MOVIE_PROVIDERS,
+  'Restrict providers (single or array). "r18" (metadata), "javdb" (download links + torrents), "missav" (m3u8 streams), "javdatabase" (description + samples). Default: try all.',
+);
 
 // External read-only, idempotent lookups — hint the client accordingly.
 const READ_HINTS = { readOnlyHint: true, openWorldHint: true, destructiveHint: false, idempotentHint: true } as const;
@@ -251,7 +262,7 @@ function createServer(key: string): McpServer {
       annotations: { title: "javinfo: search titles", ...READ_HINTS },
       inputSchema: {
         q: z.string().min(1).describe("code, title, or actress name, e.g. AVSA-210"),
-        providers: providersSchema,
+        providers: searchProvidersSchema,
       },
       outputSchema: searchOutputShape,
     },
@@ -277,7 +288,7 @@ function createServer(key: string): McpServer {
       annotations: { title: "javinfo: movie details", ...READ_HINTS },
       inputSchema: {
         q: z.string().min(1).describe("exact DVD id, e.g. AVSA-210"),
-        providers: providersSchema,
+        providers: movieProvidersSchema,
         includeImages: z.boolean().optional().describe("include image/gallery URLs (default false)"),
       },
       outputSchema: movieOutputShape,
