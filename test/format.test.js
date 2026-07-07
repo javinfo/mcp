@@ -1,0 +1,101 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { fmtSearch, fmtMovie } from "../dist/index.js";
+
+const IMG = "pics.dmm.co.jp";
+
+const searchJson = {
+  q: "AVSA-210",
+  results: [
+    {
+      dvdId: "AVSA-210",
+      title: null,
+      releaseDate: "2022-07-12",
+      cover: `https://${IMG}/x-cover.jpg`,
+      extra: {
+        titleJa: "超密着接写",
+        runtimeMins: 123,
+        maker: "AVS collector's",
+        series: "Colossal Tits",
+        categories: ["Big Tits", "Cosplay"],
+        actresses: [{ name: "Momo Minami", image: `https://${IMG}/act.jpg` }],
+      },
+    },
+  ],
+};
+
+const movieJson = {
+  q: "AVSA-210",
+  result: {
+    dvdId: "AVSA-210",
+    titleJa: "超密着接写",
+    runtimeMins: 123,
+    releaseDate: "2022-07-12",
+    makers: ["AVS collector's"],
+    actresses: ["Momo Minami"],
+    directors: ["Hikaru Jinguji"],
+    jacketFullUrl: `https://${IMG}/jacket.jpg`,
+    extra: {
+      actressesRich: [{ name: "Momo Minami", image: `https://${IMG}/act.jpg` }],
+      sampleUrl: `https://${IMG}/sample.mp4`,
+      galleryFull: [`https://${IMG}/g1.jpg`, `https://${IMG}/g2.jpg`],
+    },
+  },
+};
+
+test("fmtSearch keeps text, strips image URLs", () => {
+  const out = fmtSearch(searchJson);
+  assert.match(out, /AVSA-210/);
+  assert.match(out, /Momo Minami/);
+  assert.doesNotMatch(out, new RegExp(IMG));
+});
+
+test("fmtSearch handles empty", () => {
+  assert.match(fmtSearch({ q: "nope", results: [] }), /No results/);
+});
+
+test("fmtMovie strips images by default", () => {
+  const out = fmtMovie(movieJson);
+  assert.match(out, /AVSA-210/);
+  assert.match(out, /Momo Minami/);
+  assert.doesNotMatch(out, new RegExp(IMG));
+});
+
+test("fmtMovie includes images when asked", () => {
+  const out = fmtMovie(movieJson, true);
+  assert.match(out, new RegExp(IMG));
+  assert.match(out, /jacket\.jpg/);
+  assert.match(out, /g2\.jpg/);
+});
+
+test("fmtMovie renders javdb download links + score", () => {
+  const out = fmtMovie({
+    q: "CAWD-001",
+    source: "javdb",
+    result: {
+      dvdId: "CAWD-001",
+      extra: {
+        score: 3.61,
+        voteCount: 289,
+        downloadLinks: [{ name: "HD-cawd-001", magnet: "magnet:?xt=urn:btih:abc", url: "https://keepshare/x", size: 2816, hd: true, filesCount: 4 }],
+      },
+    },
+  });
+  assert.match(out, /Downloads \(javdb\)/);
+  assert.match(out, /magnet:\?xt=urn:btih:abc/);
+  assert.match(out, /3\.61 \(289 votes\)/);
+});
+
+test("fmtMovie renders missav m3u8 streams", () => {
+  const out = fmtMovie({
+    q: "EBOD-391",
+    source: "missav",
+    result: {
+      dvdId: "EBOD-391",
+      extra: { pageUrl: "https://missav.ws/en/ebod-391", streams: { master: "https://surrit.com/x/playlist.m3u8", variants: ["https://surrit.com/x/720/video.m3u8"] } },
+    },
+  });
+  assert.match(out, /Streams \(missav\)/);
+  assert.match(out, /master: https:\/\/surrit\.com\/x\/playlist\.m3u8/);
+  assert.match(out, /720\/video\.m3u8/);
+});

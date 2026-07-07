@@ -5,3 +5,5 @@ dist/
 .env
 .env.*
 !.env.example
+.mcp.json
+AGENTS.md

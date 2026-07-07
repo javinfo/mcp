@@ -1,18 +1,24 @@
 {
   "name": "@javinfo/mcp",
   "version": "0.0.1",
-  "description": "MCP server placeholder for javinfo. Code coming soon.",
+  "description": "MCP (stdio) server for the javinfo API — search titles and fetch full records, token-lean.",
   "private": false,
   "license": "MIT",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "javinfo-mcp": "./dist/index.js"
+  },
   "files": [
-    "src",
+    "dist",
     "README.md"
   ],
   "scripts": {
-    "build": "echo \"build pending\"",
+    "build": "tsc",
+    "dev": "node --experimental-strip-types src/index.ts",
+    "test": "node --test",
+    "prepublishOnly": "npm run build",
     "release": "release-it"
   },
   "publishConfig": {
@@ -27,8 +33,10 @@
     "javinfo"
   ],
   "devDependencies": {
+    "@release-it/conventional-changelog": "^8.0.1",
+    "@types/node": "^26.1.0",
     "release-it": "^17.10.0",
-    "@release-it/conventional-changelog": "^8.0.1"
+    "typescript": "^6.0.3"
   },
   "release-it": {
     "git": {
@@ -47,5 +55,9 @@
         "infile": "CHANGELOG.md"
       }
     }
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
   }
 }
