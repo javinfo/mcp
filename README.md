@@ -1,18 +1,32 @@
 # @javinfo/mcp
 
-MCP (stdio) server for the [javinfo](https://javinfo.dev) API. Gives an LLM two
-tools, in the context7 resolve → detail shape:
+An MCP server (stdio) for the [javinfo](https://javinfo.dev) API. Look up JAV
+releases by DVD code, title, or actress, and get metadata, download links, or
+stream URLs back.
 
-- **`javinfo-search`** — search by DVD code, title, or actress. Returns a compact list of matches.
-- **`javinfo-movie`** — full record for one title by exact DVD id. Image URLs omitted by default (`includeImages: true` to include them).
+## Tools
 
-Both accept a `providers` arg (`r18`, `javdb`, `missav`, `javdatabase`) to pin the source: `javdb` for download/torrent links, `missav` for m3u8 streams, `r18`/`javdatabase` for metadata.
+| Tool | Does |
+|------|------|
+| `javinfo-search` | Search by code, title, or actress. Returns a list of matches. |
+| `javinfo-movie` | Fetch one release by exact DVD id. |
 
-Text output is token-lean markdown; each result also carries the full record as MCP `structuredContent` for programmatic clients.
+Search first to find the code, then call `javinfo-movie` with it.
+
+`providers` picks where the data comes from:
+
+- `r18` — metadata (also does free-text search)
+- `javdb` — download links and magnets (`javinfo-movie` only)
+- `missav` — `.m3u8` streams
+- `javdatabase` — description and sample images
+
+Movie output skips image URLs unless you pass `includeImages: true`. Every
+result also carries the raw record as `structuredContent`.
 
 ## Setup
 
-Requires a javinfo API key in the `JAVINFO_API_KEY` env var.
+Needs a javinfo API key ([get one](https://app.javinfo.dev)) in the
+`JAVINFO_API_KEY` environment variable.
 
 ```json
 {
@@ -26,11 +40,10 @@ Requires a javinfo API key in the `JAVINFO_API_KEY` env var.
 }
 ```
 
-## Develop
+## Local
 
 ```bash
 npm install
-npm run build     # tsc -> dist/
-npm test          # formatter self-check
+npm run build
 JAVINFO_API_KEY=jvi_... npx @modelcontextprotocol/inspector node dist/index.js
 ```

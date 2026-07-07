@@ -17,7 +17,6 @@
   "scripts": {
     "build": "tsc",
     "dev": "node --experimental-strip-types src/index.ts",
-    "test": "node --test",
     "prepublishOnly": "npm run build",
     "release": "release-it"
   },
