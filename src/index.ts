@@ -2,8 +2,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { pathToFileURL } from "node:url";
-import { realpathSync } from "node:fs";
 
 const API = "https://api.javinfo.dev";
 
@@ -325,10 +323,6 @@ async function main() {
   await createServer(key).connect(new StdioServerTransport());
 }
 
-// Launch when run as the entrypoint. Resolve argv[1] through realpath so this
-// still matches when invoked via a bin symlink (npx / global install), while
-// staying inert on plain import.
-const entry = process.argv[1] ? pathToFileURL(realpathSync(process.argv[1])).href : "";
-if (entry === import.meta.url) {
-  main();
-}
+// This package is a CLI/stdio server — always run. (No import-only use; a
+// prior entry-point guard broke launches via npx's cache-dir symlinks.)
+main();
