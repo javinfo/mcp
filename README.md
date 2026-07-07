@@ -25,8 +25,8 @@ result also carries the raw record as `structuredContent`.
 
 ## Setup
 
-Needs a javinfo API key ([get one](https://app.javinfo.dev)) in the
-`JAVINFO_API_KEY` environment variable.
+Needs a javinfo API key in the `JAVINFO_API_KEY` environment variable.
+Get your free key at [javinfo.dev](https://javinfo.dev).
 
 ```json
 {
