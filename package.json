@@ -1,6 +1,6 @@
 {
   "name": "@javinfo/mcp",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "MCP (stdio) server for the javinfo API — search titles and fetch full records, token-lean.",
   "private": false,
   "license": "MIT",
