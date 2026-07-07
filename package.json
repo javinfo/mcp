@@ -37,8 +37,14 @@
     "ai",
     "claude",
     "metadata",
-    "api-client"
+    "api-client",
+    "missav-api",
+    "javdb-api",
+    "fanza-api",
+    "dmm-api",
+    "javdatabase-api"
   ],
+  "author": "JAVINFO <admin@javinfo.dev>",
   "devDependencies": {
     "@release-it/conventional-changelog": "^8.0.1",
     "@types/node": "^26.1.0",
