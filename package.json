@@ -29,7 +29,15 @@
   },
   "keywords": [
     "mcp",
-    "javinfo"
+    "model-context-protocol",
+    "javinfo",
+    "jav",
+    "stdio",
+    "llm",
+    "ai",
+    "claude",
+    "metadata",
+    "api-client"
   ],
   "devDependencies": {
     "@release-it/conventional-changelog": "^8.0.1",
