@@ -10,6 +10,8 @@ jobs:
   publish:
     name: Publish @javinfo/mcp to npm
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
