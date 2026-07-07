@@ -1,5 +1,12 @@
 
 
+## [0.3.1](https://github.com/javinfo/mcp/compare/0.3.0...0.3.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* run server when launched via bin symlink (npx/global) ([5724176](https://github.com/javinfo/mcp/commit/57241766c8979980fc8053e5b522132a6e67ab1d))
+
 # 0.3.0 (2026-07-07)
 
 
