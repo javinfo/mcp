@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
 
 const API = "https://api.javinfo.dev";
 
@@ -324,7 +325,10 @@ async function main() {
   await createServer(key).connect(new StdioServerTransport());
 }
 
-// Only launch when run as the entrypoint (so tests can import the formatters).
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Launch when run as the entrypoint. Resolve argv[1] through realpath so this
+// still matches when invoked via a bin symlink (npx / global install), while
+// staying inert on plain import.
+const entry = process.argv[1] ? pathToFileURL(realpathSync(process.argv[1])).href : "";
+if (entry === import.meta.url) {
   main();
 }
