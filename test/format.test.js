@@ -1,11 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fmtSearch, fmtMovie } from "../dist/index.js";
+import { z } from "zod";
+import { fmtSearch, fmtMovie, searchOutputShape, movieOutputShape } from "../dist/index.js";
 
 const IMG = "pics.dmm.co.jp";
+const searchOut = z.object(searchOutputShape);
+const movieOut = z.object(movieOutputShape);
 
 const searchJson = {
   q: "AVSA-210",
+  source: "r18",
   results: [
     {
       dvdId: "AVSA-210",
@@ -26,6 +30,7 @@ const searchJson = {
 
 const movieJson = {
   q: "AVSA-210",
+  source: "r18",
   result: {
     dvdId: "AVSA-210",
     titleJa: "超密着接写",
@@ -84,6 +89,29 @@ test("fmtMovie renders javdb download links + score", () => {
   assert.match(out, /Downloads \(javdb\)/);
   assert.match(out, /magnet:\?xt=urn:btih:abc/);
   assert.match(out, /3\.61 \(289 votes\)/);
+});
+
+test("output schemas accept all provider shapes + empty miss", () => {
+  // search list + empty
+  assert.doesNotThrow(() => searchOut.parse(searchJson));
+  assert.doesNotThrow(() => searchOut.parse({ q: "x", source: null, query: "x", count: 0, results: [] }));
+  // movie: r18, javdb, missav, javdatabase, and null miss
+  assert.doesNotThrow(() => movieOut.parse(movieJson));
+  assert.doesNotThrow(() => movieOut.parse({ q: "x", source: null, result: null }));
+  assert.doesNotThrow(() =>
+    movieOut.parse({ q: "CAWD-001", source: "javdb", result: { dvdId: "CAWD-001", extra: { score: 3.6, voteCount: 9, downloadLinks: [{ name: "a", magnet: "m", size: 10, hd: true, filesCount: 2 }] } } }),
+  );
+  assert.doesNotThrow(() =>
+    movieOut.parse({ q: "EBOD-391", source: "missav", result: { dvdId: "EBOD-391", extra: { pageUrl: "p", streams: { master: "m.m3u8", variants: ["v.m3u8"] } } } }),
+  );
+  assert.doesNotThrow(() =>
+    movieOut.parse({ q: "SSIS-001", source: "javdatabase", result: { dvdId: "SSIS-001", extra: { description: "d", sampleImages: ["s.jpg"], trailerUrl: "t.mp4" } } }),
+  );
+});
+
+test("output schema preserves unknown/provider extra keys (loose)", () => {
+  const parsed = movieOut.parse({ q: "x", source: "javdb", result: { dvdId: "x", extra: { downloadLinks: [], newFutureField: 1 } } });
+  assert.equal(parsed.result.extra.newFutureField, 1); // forward-compat: not stripped
 });
 
 test("fmtMovie renders missav m3u8 streams", () => {

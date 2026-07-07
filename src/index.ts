@@ -24,13 +24,105 @@ async function postJavinfo(
       "user-agent": "javinfo-mcp/0.1",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
+  if (res.status === 404) return null; // valid miss: code not indexed, not a failure
   const json: any = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(json?.message || `javinfo ${path} HTTP ${res.status}`);
   }
   return json;
 }
+
+// --- output schemas (exported for tests) ----------------------------------
+// Permissive + forward-compatible so any provider's shape validates.
+const PROVIDERS = ["r18", "javdb", "missav", "javdatabase"] as const;
+const nstr = z.string().nullable().optional();
+const strArr = z.array(z.string()).optional();
+
+const movieResultSchema = z
+  .object({
+    contentId: nstr,
+    dvdId: nstr,
+    titleEn: nstr,
+    titleJa: nstr,
+    commentEn: nstr,
+    commentJa: nstr,
+    runtimeMins: z.number().nullable().optional(),
+    releaseDate: nstr,
+    makers: strArr,
+    label: nstr,
+    series: nstr,
+    categories: strArr,
+    actresses: strArr,
+    actors: strArr,
+    directors: strArr,
+    authors: strArr,
+    jacketFullUrl: nstr,
+    jacketThumbUrl: nstr,
+    site: nstr,
+    serviceCode: nstr,
+    extra: z
+      .object({
+        actressesRich: z.array(z.object({ name: z.string(), image: nstr }).loose()).optional(),
+        sampleUrl: nstr,
+        galleryFull: strArr,
+        galleryThumb: strArr,
+        sampleImages: strArr,
+        downloadLinks: z
+          .array(
+            z
+              .object({
+                name: nstr,
+                hash: nstr,
+                magnet: nstr,
+                url: nstr,
+                size: z.number().nullable().optional(),
+                hd: z.boolean().nullable().optional(),
+                filesCount: z.number().nullable().optional(),
+              })
+              .loose(),
+          )
+          .optional(),
+        score: z.number().nullable().optional(),
+        voteCount: z.number().nullable().optional(),
+        pageUrl: nstr,
+        description: nstr,
+        trailerUrl: nstr,
+        streams: z
+          .object({ master: z.string(), variants: strArr })
+          .loose()
+          .nullable()
+          .optional(),
+      })
+      .loose()
+      .optional(),
+  })
+  .loose();
+
+const searchResultSchema = z
+  .object({
+    id: nstr,
+    dvdId: nstr,
+    title: nstr,
+    cover: nstr,
+    releaseDate: nstr,
+    extra: z.record(z.string(), z.any()).optional(),
+  })
+  .loose();
+
+export const searchOutputShape = {
+  q: z.string(),
+  source: z.string().nullable(),
+  query: z.string().optional(),
+  count: z.number().optional(),
+  results: z.array(searchResultSchema),
+};
+export const movieOutputShape = {
+  q: z.string(),
+  source: z.string().nullable(),
+  result: movieResultSchema.nullable(),
+};
 
 // --- token-lean formatters (exported for tests) ---------------------------
 const list = (a?: unknown[]) => (Array.isArray(a) && a.length ? a.join(", ") : "");
@@ -133,33 +225,44 @@ export function fmtMovie(json: any, includeImages = false): string {
 // Shared: which upstream sources to try. r18/javdatabase = metadata,
 // javdb = magnet/download links + score, missav = HLS (.m3u8) streams.
 const providersSchema = z
-  .union([z.string(), z.array(z.string())])
+  .union([z.enum(PROVIDERS), z.array(z.enum(PROVIDERS))])
   .optional()
   .describe(
-    'Restrict upstream providers (comma string or array). Options: "r18" (bilingual metadata), "javdb" (download links + torrents), "missav" (m3u8 streams), "javdatabase" (description + samples). Default: try all.',
+    'Restrict upstream providers (single or array). "r18" (bilingual metadata), "javdb" (download links + torrents), "missav" (m3u8 streams), "javdatabase" (description + samples). Default: try all.',
   );
 
-// External read-only lookups — hint the client accordingly.
-const READ_HINTS = { readOnlyHint: true, openWorldHint: true, destructiveHint: false } as const;
+// External read-only, idempotent lookups — hint the client accordingly.
+const READ_HINTS = { readOnlyHint: true, openWorldHint: true, destructiveHint: false, idempotentHint: true } as const;
 
 function createServer(key: string): McpServer {
-  const server = new McpServer({ name: "javinfo", version: "0.1.0" });
+  const server = new McpServer(
+    { name: "javinfo", version: "0.1.0" },
+    {
+      instructions:
+        "Search first with javinfo-search to find the exact dvdId, then javinfo-movie for the full record. Pin providers: javdb=download/torrent links, missav=m3u8 streams, r18/javdatabase=metadata.",
+    },
+  );
 
   server.registerTool(
     "javinfo-search",
     {
-      title: "javinfo: search titles",
       description:
         "Search javinfo for adult videos by DVD code, title, or actress. Returns a compact list of matches. Call this FIRST to find the exact dvdId, then pass that dvdId to javinfo-movie for full details (context7-style resolve → detail).",
       annotations: { title: "javinfo: search titles", ...READ_HINTS },
       inputSchema: {
-        q: z.string().describe("code, title, or actress name, e.g. AVSA-210"),
+        q: z.string().min(1).describe("code, title, or actress name, e.g. AVSA-210"),
         providers: providersSchema,
       },
+      outputSchema: searchOutputShape,
     },
     async ({ q, providers }) => {
       try {
-        return { content: [{ type: "text", text: fmtSearch(await postJavinfo("query", q, key, providers)) }] };
+        const json = await postJavinfo("query", q, key, providers);
+        if (!json) {
+          const empty = { q, source: null, query: q, count: 0, results: [] };
+          return { content: [{ type: "text", text: fmtSearch(empty) }], structuredContent: empty };
+        }
+        return { content: [{ type: "text", text: fmtSearch(json) }], structuredContent: json };
       } catch (err: any) {
         return { content: [{ type: "text", text: err.message }], isError: true };
       }
@@ -169,20 +272,28 @@ function createServer(key: string): McpServer {
   server.registerTool(
     "javinfo-movie",
     {
-      title: "javinfo: movie details",
       description:
         "Get the full record for one title by its exact DVD id (from javinfo-search). Use the providers arg to pin a source: javdb for download/torrent links, missav for m3u8 streams. Image URLs are omitted by default; set includeImages to append jacket, sample, and gallery URLs.",
       annotations: { title: "javinfo: movie details", ...READ_HINTS },
       inputSchema: {
-        q: z.string().describe("exact DVD id, e.g. AVSA-210"),
+        q: z.string().min(1).describe("exact DVD id, e.g. AVSA-210"),
         providers: providersSchema,
         includeImages: z.boolean().optional().describe("include image/gallery URLs (default false)"),
       },
+      outputSchema: movieOutputShape,
     },
     async ({ q, providers, includeImages }) => {
       try {
+        const json = await postJavinfo("movie", q, key, providers);
+        if (!json) {
+          return {
+            content: [{ type: "text", text: `No match for "${q}" — code likely not indexed.` }],
+            structuredContent: { q, source: null, result: null },
+          };
+        }
         return {
-          content: [{ type: "text", text: fmtMovie(await postJavinfo("movie", q, key, providers), includeImages) }],
+          content: [{ type: "text", text: fmtMovie(json, includeImages) }],
+          structuredContent: json,
         };
       } catch (err: any) {
         return { content: [{ type: "text", text: err.message }], isError: true };

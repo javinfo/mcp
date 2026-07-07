@@ -6,7 +6,9 @@ tools, in the context7 resolve → detail shape:
 - **`javinfo-search`** — search by DVD code, title, or actress. Returns a compact list of matches.
 - **`javinfo-movie`** — full record for one title by exact DVD id. Image URLs omitted by default (`includeImages: true` to include them).
 
-Output is formatted markdown, not raw JSON, to keep token usage low.
+Both accept a `providers` arg (`r18`, `javdb`, `missav`, `javdatabase`) to pin the source: `javdb` for download/torrent links, `missav` for m3u8 streams, `r18`/`javdatabase` for metadata.
+
+Text output is token-lean markdown; each result also carries the full record as MCP `structuredContent` for programmatic clients.
 
 ## Setup
 
