@@ -1,5 +1,12 @@
 
 
+# [0.4.0](https://github.com/javinfo/mcp/compare/0.3.2...0.4.0) (2026-07-16)
+
+
+### Features
+
+* update MCP for javinfo v2 API ([c084b76](https://github.com/javinfo/mcp/commit/c084b76737b011f90ea317af1cb38bc73d4a589f))
+
 ## [0.3.2](https://github.com/javinfo/mcp/compare/0.3.1...0.3.2) (2026-07-07)
 
 
