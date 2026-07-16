@@ -6,15 +6,15 @@ import { z } from "zod";
 const API = "https://api.javinfo.dev";
 
 // --- API call -------------------------------------------------------------
-async function postJavinfo(
-  path: "query" | "movie",
-  q: string,
-  key: string,
-  providers?: string | string[],
-) {
-  const body: Record<string, unknown> = { q };
-  // API accepts a comma-separated string or array; normalize to string.
-  if (providers?.length) body.providers = Array.isArray(providers) ? providers.join(",") : providers;
+type Path = "query" | "movie" | "random";
+
+// API accepts providers as a comma string or array; normalize to a string.
+function normProviders(p?: string | string[]): string | undefined {
+  if (!p?.length) return undefined;
+  return Array.isArray(p) ? p.join(",") : p;
+}
+
+async function postJavinfo(path: Path, body: Record<string, unknown>, key: string) {
   const res = await fetch(`${API}/${path}`, {
     method: "POST",
     headers: {
@@ -36,8 +36,8 @@ async function postJavinfo(
 // --- output schemas (exported for tests) ----------------------------------
 // Permissive + forward-compatible so any provider's shape validates.
 // javdb is code-only: valid on /movie, NOT on /query (list search).
-const MOVIE_PROVIDERS = ["r18", "javdb", "missav", "javdatabase"] as const;
-const SEARCH_PROVIDERS = ["r18", "missav", "javdatabase"] as const;
+const MOVIE_PROVIDERS = ["fanza", "dmm", "javdb", "missav", "javdatabase"] as const;
+const SEARCH_PROVIDERS = ["fanza", "dmm", "missav", "javdatabase"] as const;
 const nstr = z.string().nullable().optional();
 const strArr = z.array(z.string()).optional();
 
@@ -124,9 +124,16 @@ export const movieOutputShape = {
   source: z.string().nullable(),
   result: movieResultSchema.nullable(),
 };
+// /random returns a bare array of movie records; wrap for MCP structuredContent.
+export const randomOutputShape = {
+  count: z.number(),
+  results: z.array(movieResultSchema),
+};
 
 // --- token-lean formatters (exported for tests) ---------------------------
 const list = (a?: unknown[]) => (Array.isArray(a) && a.length ? a.join(", ") : "");
+// Trim ISO datetimes ("2024-03-11T18:30:00.000Z") to the date; leave plain dates as-is.
+const day = (s?: unknown) => (typeof s === "string" ? s.slice(0, 10) : "");
 const names = (a?: any[]) =>
   Array.isArray(a) ? a.map((x) => (typeof x === "string" ? x : x?.name)).filter(Boolean) : [];
 
@@ -138,7 +145,7 @@ export function fmtSearch(json: any): string {
     const title = e.titleEn || r.title || e.titleJa || "(untitled)";
     const bits = [
       names(e.actresses).join(", "),
-      r.releaseDate,
+      day(r.releaseDate),
       e.runtimeMins ? `${e.runtimeMins}min` : "",
       e.maker,
       e.series ? `series: ${e.series}` : "",
@@ -164,7 +171,7 @@ export function fmtMovie(json: any, includeImages = false): string {
     ["Title (JA)", r.titleJa || ""],
     ["DVD ID", r.dvdId || ""],
     ["Content ID", r.contentId || ""],
-    ["Released", r.releaseDate || ""],
+    ["Released", day(r.releaseDate)],
     ["Runtime", r.runtimeMins ? `${r.runtimeMins} min` : ""],
     ["Makers", list(r.makers)],
     ["Label", r.label || ""],
@@ -209,7 +216,7 @@ export function fmtMovie(json: any, includeImages = false): string {
     secs.push(`**Streams (missav):**\nmaster: ${e.streams.master}${variants ? `\n${variants}` : ""}`);
   }
 
-  // images (r18 gallery, javdatabase sampleImages) — gated
+  // images (fanza/dmm gallery, javdatabase sampleImages) — gated
   if (includeImages) {
     const imgs = [
       r.jacketFullUrl && `jacket: ${r.jacketFullUrl}`,
@@ -222,8 +229,27 @@ export function fmtMovie(json: any, includeImages = false): string {
   return secs.join("\n\n");
 }
 
+// /random returns movie-shaped records (not the search shape) — compact list.
+export function fmtRandom(items: any[]): string {
+  if (!Array.isArray(items) || !items.length) return "No random titles returned.";
+  const lines = items.map((r, i) => {
+    const bits = [
+      names(r.actresses).join(", "),
+      day(r.releaseDate),
+      r.runtimeMins ? `${r.runtimeMins}min` : "",
+      list(r.makers),
+    ].filter(Boolean);
+    const title = r.titleEn || r.titleJa || "(untitled)";
+    return (
+      `${i + 1}. **${r.dvdId || r.contentId || "?"}** — ${title}\n` +
+      (bits.length ? `   ${bits.join(" · ")}\n` : "")
+    );
+  });
+  return `${items.length} random title(s):\n\n${lines.join("")}`.trimEnd();
+}
+
 // --- server ---------------------------------------------------------------
-// Shared: which upstream sources to try. r18/javdatabase = metadata,
+// Shared: which upstream sources to try. fanza/dmm/javdatabase = metadata,
 // javdb = magnet/download links + score, missav = HLS (.m3u8) streams.
 const providersArg = (opts: readonly string[], note: string) =>
   z
@@ -234,22 +260,51 @@ const providersArg = (opts: readonly string[], note: string) =>
 // javdb download links come from javinfo-movie, not search (javdb is code-only).
 const searchProvidersSchema = providersArg(
   SEARCH_PROVIDERS,
-  'Restrict list-search providers (single or array). "r18" (metadata + free-text), "missav" (m3u8), "javdatabase" (samples). javdb is NOT available here — use javinfo-movie for download links. Default: try all.',
+  'Restrict list-search providers (single or array). "fanza"/"dmm" (metadata + free-text), "missav" (m3u8), "javdatabase" (samples). javdb is NOT available here — use javinfo-movie for download links. Default: try all.',
 );
 const movieProvidersSchema = providersArg(
   MOVIE_PROVIDERS,
-  'Restrict providers (single or array). "r18" (metadata), "javdb" (download links + torrents), "missav" (m3u8 streams), "javdatabase" (description + samples). Default: try all.',
+  'Restrict providers (single or array). "fanza"/"dmm" (metadata), "javdb" (download links + torrents), "missav" (m3u8 streams), "javdatabase" (description + samples). Default: try all.',
 );
+
+// /query filters (see the Filtering guide). All optional; values pass through to
+// the winning provider verbatim (exact match; English vs Japanese genres vary by source).
+const filterSchema = z
+  .object({
+    genre: z.string(),
+    actress: z.string(),
+    maker: z.string(),
+    series: z.string(),
+    director: z.string(),
+    label: z.string(),
+    actor: z.string(),
+    censored: z.enum(["censored", "uncensored"]),
+    runtimeMin: z.number().int(),
+    runtimeMax: z.number().int(),
+    releaseAfter: z.string(),
+    releaseBefore: z.string(),
+    availability: z.enum(["playable", "magnets", "subtitle", "single"]),
+  })
+  .partial()
+  .describe(
+    "Filter list-search; set only fields you need. fanza/dmm are censored-only; runtime range is fanza/dmm/missav; release range + Japanese genres are missav; availability is javdb. A PINNED provider that can't satisfy a filter returns 422.",
+  );
+const sortSchema = z
+  .enum(["relevance", "release", "update", "rating"])
+  .optional()
+  .describe('Sort order (default relevance). "rating"/"update" are javdb-only; "release" is fanza/dmm/javdb.');
 
 // External read-only, idempotent lookups — hint the client accordingly.
 const READ_HINTS = { readOnlyHint: true, openWorldHint: true, destructiveHint: false, idempotentHint: true } as const;
+// /random is read-only but non-idempotent (a fresh set each call).
+const RANDOM_HINTS = { readOnlyHint: true, openWorldHint: true, destructiveHint: false, idempotentHint: false } as const;
 
 function createServer(key: string): McpServer {
   const server = new McpServer(
     { name: "javinfo", version: "0.1.0" },
     {
       instructions:
-        "Search first with javinfo-search to find the exact dvdId, then javinfo-movie for the full record. Pin providers: javdb=download/torrent links, missav=m3u8 streams, r18/javdatabase=metadata.",
+        "Search first with javinfo-search (supports filter/sort/pagination) to find the exact dvdId, then javinfo-movie for the full record. javinfo-random returns random DMM+FANZA titles. Pin providers: javdb=download/torrent links, missav=m3u8 streams, fanza/dmm/javdatabase=metadata.",
     },
   );
 
@@ -257,19 +312,38 @@ function createServer(key: string): McpServer {
     "javinfo-search",
     {
       description:
-        "Search javinfo for adult videos by DVD code, title, or actress. Returns a compact list of matches. Call this FIRST to find the exact dvdId, then pass that dvdId to javinfo-movie for full details (context7-style resolve → detail).",
+        "Search javinfo for adult videos by DVD code, title, or actress, with optional filter/sort/pagination. Returns a compact list of matches. Call this FIRST to find the exact dvdId, then pass that dvdId to javinfo-movie for full details (context7-style resolve → detail). q is optional when a filter is set (browse a whole category). Pinning a provider that can't satisfy a filter/sort errors with 422.",
       annotations: { title: "javinfo: search titles", ...READ_HINTS },
       inputSchema: {
-        q: z.string().min(1).describe("code, title, or actress name, e.g. AVSA-210"),
+        q: z.string().min(1).optional().describe("code, title, or actress name, e.g. AVSA-210 (optional if filter set)"),
         providers: searchProvidersSchema,
+        filter: filterSchema.optional(),
+        sort: sortSchema,
+        page: z.number().int().min(1).optional().describe("1-based page (default 1)"),
+        num: z.number().int().min(1).max(50).optional().describe("results per page (default 10, max 50)"),
       },
       outputSchema: searchOutputShape,
     },
-    async ({ q, providers }) => {
+    async ({ q, providers, filter, sort, page, num }) => {
+      const hasFilter = !!filter && Object.values(filter).some((v) => v !== undefined);
+      if (!q && !hasFilter) {
+        return {
+          content: [{ type: "text", text: "Provide a search query (q) or at least one filter." }],
+          isError: true,
+        };
+      }
+      const body: Record<string, unknown> = {};
+      if (q) body.q = q;
+      const prov = normProviders(providers);
+      if (prov) body.providers = prov;
+      if (hasFilter) body.filter = filter;
+      if (sort) body.sort = sort;
+      if (page != null) body.page = page;
+      if (num != null) body.num = num;
       try {
-        const json = await postJavinfo("query", q, key, providers);
+        const json = await postJavinfo("query", body, key);
         if (!json) {
-          const empty = { q, source: null, query: q, count: 0, results: [] };
+          const empty = { q: q ?? "", source: null, query: q ?? "", count: 0, results: [] };
           return { content: [{ type: "text", text: fmtSearch(empty) }], structuredContent: empty };
         }
         return { content: [{ type: "text", text: fmtSearch(json) }], structuredContent: json };
@@ -293,8 +367,11 @@ function createServer(key: string): McpServer {
       outputSchema: movieOutputShape,
     },
     async ({ q, providers, includeImages }) => {
+      const body: Record<string, unknown> = { q };
+      const prov = normProviders(providers);
+      if (prov) body.providers = prov;
       try {
-        const json = await postJavinfo("movie", q, key, providers);
+        const json = await postJavinfo("movie", body, key);
         if (!json) {
           return {
             content: [{ type: "text", text: `No match for "${q}" — code likely not indexed.` }],
@@ -305,6 +382,30 @@ function createServer(key: string): McpServer {
           content: [{ type: "text", text: fmtMovie(json, includeImages) }],
           structuredContent: json,
         };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: err.message }], isError: true };
+      }
+    },
+  );
+
+  server.registerTool(
+    "javinfo-random",
+    {
+      description:
+        "Get a batch of random DMM+FANZA titles (full records) — handy for landing pages or discovery. No query or provider pinning; just an optional count. Non-idempotent: a fresh set each call.",
+      annotations: { title: "javinfo: random titles", ...RANDOM_HINTS },
+      inputSchema: {
+        num: z.number().int().min(1).max(50).optional().describe("how many titles (default 20, max 50)"),
+      },
+      outputSchema: randomOutputShape,
+    },
+    async ({ num }) => {
+      const body: Record<string, unknown> = {};
+      if (num != null) body.num = num;
+      try {
+        const items: any[] = (await postJavinfo("random", body, key)) ?? [];
+        const out = { count: items.length, results: items };
+        return { content: [{ type: "text", text: fmtRandom(items) }], structuredContent: out };
       } catch (err: any) {
         return { content: [{ type: "text", text: err.message }], isError: true };
       }
@@ -323,6 +424,7 @@ async function main() {
   await createServer(key).connect(new StdioServerTransport());
 }
 
-// This package is a CLI/stdio server — always run. (No import-only use; a
-// prior entry-point guard broke launches via npx's cache-dir symlinks.)
-main();
+// CLI/stdio server — autostart by default. Env-gated (not entry-point guarded:
+// an import.meta/argv guard broke npx's symlinked cache dir) so tests can import
+// the exported formatters without spawning the server.
+if (!process.env.JAVINFO_MCP_NO_AUTOSTART) main();
