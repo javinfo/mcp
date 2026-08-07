@@ -13,9 +13,11 @@ installed, you can also open a **local LAN HLS play session**.
 | `javinfo-movie` | Fetch one release by exact DVD id. |
 | `javinfo-random` | A batch of random DMM+FANZA titles (full records). |
 | `javinfo-open` | Open a local play session via the **javinfo CLI** (auto-starts serve daemon; returns `play_url`). |
+| `javinfo-serve` | Control the local serve daemon: `start` / `stop` / `status` (CLI required). |
 
 Search first to find the code, then call `javinfo-movie` with it. On a machine
-with the CLI, call `javinfo-open` for a LAN play URL (optional player launch).
+with the CLI, call `javinfo-open` for a LAN play URL (optional player launch),
+or `javinfo-serve` to manage the daemon lifecycle.
 
 `providers` picks where the data comes from:
 
@@ -60,13 +62,25 @@ curl -fsSL https://javinfo.dev/install.sh | bash
 | Arg | Required | Meaning |
 |-----|----------|---------|
 | `q` | yes | DVD code (e.g. `EBOD-391`) |
-| `with` | no | Player id/path (`vlc`, `mpv`, …) — `javinfo open --with` |
+| `with` | no | Player id/path — prefer asking the user, then `vlc` (`javinfo open --with`) |
 | `maxHeight` | no | Prefer variants ≤ this height |
 | `ttl` | no | Session TTL in hours (default: no expiry) |
 
 Returns `play_url` / `meta_url` (and launches a player when `with` is set).
+Prefer asking the user to open with **VLC** (`with: "vlc"`).
 The CLI auto-starts the serve daemon; the daemon keeps running after MCP exits.
 **macOS / Linux** only for now (CLI control uses Unix sockets).
+
+### Serve daemon (`javinfo-serve`)
+
+| Arg | Required | Meaning |
+|-----|----------|---------|
+| `action` | yes | `start`, `stop`, or `status` |
+| `port` | no | TCP port when starting (default `8787`) |
+| `bind` | no | Bind address when starting (default `0.0.0.0`) |
+| `maxHeight` | no | Daemon default max HLS height when starting |
+
+`status` when the daemon is down returns `running: false` (not an error).
 
 ## Auth & config
 
@@ -106,6 +120,6 @@ config.toml). Optional: `JAVINFO_CLI` if the binary is not on `PATH`.
 ```bash
 npm install
 npm run build
-npm test   # formatter + config + cli unit checks
+npm test   # builds, then runs test/ (node:test)
 JAVINFO_API_KEY=jvi_... npx @modelcontextprotocol/inspector node dist/index.js
 ```

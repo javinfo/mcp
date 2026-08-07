@@ -16,7 +16,7 @@
   ],
   "scripts": {
     "build": "tsc --emitDeclarationOnly && esbuild src/index.ts --bundle --outfile=dist/index.js --minify --platform=node --format=esm --packages=external",
-    "test": "npm run build && node --test src/format.test.js src/config.test.js src/cli.test.js",
+    "test": "npm run build && node --test 'test/**/*.test.js'",
     "dev": "node --experimental-strip-types src/index.ts",
     "prepublishOnly": "npm run build",
     "release": "release-it"

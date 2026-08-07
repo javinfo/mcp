@@ -17,11 +17,15 @@ import {
 import {
   CLI_INSTALL_HINT,
   buildOpenArgs,
+  buildServeArgs,
   cliBinary,
   extractJsonObject,
   fmtOpen,
+  fmtServe,
   parseOpenResult,
+  parseServeStatusOutput,
   runJavinfoOpen,
+  runJavinfoServe,
 } from "./cli.js";
 
 // Re-export for unit tests (imported from dist/index.js).
@@ -37,11 +41,15 @@ export {
   seedApiKeyFromEnv,
   CLI_INSTALL_HINT,
   buildOpenArgs,
+  buildServeArgs,
   cliBinary,
   extractJsonObject,
   fmtOpen,
+  fmtServe,
   parseOpenResult,
+  parseServeStatusOutput,
   runJavinfoOpen,
+  runJavinfoServe,
 };
 
 // --- API call -------------------------------------------------------------
@@ -349,6 +357,13 @@ const OPEN_HINTS = {
   destructiveHint: false,
   idempotentHint: false,
 } as const;
+// serve start/stop mutate local daemon; status is read-only but same tool surface.
+const SERVE_HINTS = {
+  readOnlyHint: false,
+  openWorldHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+} as const;
 
 export const openOutputShape = {
   q: z.string(),
@@ -359,12 +374,32 @@ export const openOutputShape = {
   with: z.string().optional(),
 };
 
+export const serveOutputShape = {
+  action: z.enum(["start", "stop", "status"]),
+  running: z.boolean(),
+  message: z.string(),
+  pid: z.number().optional(),
+  listen: z.string().optional(),
+  lan: z.string().optional(),
+  maxHeight: z.number().optional(),
+  sessions: z.number().optional(),
+  startedAtUnix: z.number().optional(),
+  log: z.string().optional(),
+};
+
 function createServer(key: string, baseUrl: string = DEFAULT_BASE_URL): McpServer {
   const server = new McpServer(
     { name: "javinfo", version: "0.4.0" },
     {
-      instructions:
-        "Search first with javinfo-search (supports filter/sort/pagination) to find the exact dvdId, then javinfo-movie for the full record. javinfo-random returns random DMM+FANZA titles. On hosts with the javinfo CLI installed, javinfo-open creates a local LAN HLS play URL (auto-starts serve daemon; optional with=vlc|mpv). Pin providers: javdb=download/torrent links, missav=m3u8 streams, fanza/dmm/javdatabase=metadata.",
+      instructions: [
+        "Workflow: javinfo-search (find exact dvdId; filter/sort/pagination supported) → javinfo-movie (full record) → optionally javinfo-open (local LAN play URL when the host has the javinfo CLI).",
+        "javinfo-random returns random DMM+FANZA titles (use a result dvdId with movie or open).",
+        "Providers: javdb=download/torrent links (movie only), missav=remote m3u8 streams, fanza/dmm/javdatabase=metadata.",
+        "javinfo-open needs the javinfo CLI (PATH or JAVINFO_CLI); it is not a substitute for movie metadata — use it when the user wants to play/stream locally (play_url), not for magnets or fields.",
+        "When offering javinfo-open, ask the user if they want to open the stream in VLC; if yes, call with with=\"vlc\" (preferred player). Other players (mpv, …) only if the user asks.",
+        "javinfo-serve controls the local HLS daemon: action=start|stop|status (CLI required). open auto-starts the daemon when needed; use serve to manage lifecycle explicitly.",
+        "Auth is env JAVINFO_API_KEY or ~/.config/javinfo/config.toml (same as the CLI).",
+      ].join(" "),
     },
   );
 
@@ -372,7 +407,7 @@ function createServer(key: string, baseUrl: string = DEFAULT_BASE_URL): McpServe
     "javinfo-search",
     {
       description:
-        "Search javinfo for adult videos by DVD code, title, or actress, with optional filter/sort/pagination. Returns a compact list of matches. Call this FIRST to find the exact dvdId, then pass that dvdId to javinfo-movie for full details (context7-style resolve → detail). q is optional when a filter is set (browse a whole category). Pinning a provider that can't satisfy a filter/sort errors with 422.",
+        "Search titles by DVD code, title, or actress (optional filter/sort/pagination). Call FIRST to resolve the exact dvdId, then javinfo-movie for the full record, and javinfo-open only if the user wants a local LAN play URL (CLI required). q optional when a filter is set. Pinning a provider that can't satisfy a filter/sort returns 422.",
       annotations: { title: "javinfo: search titles", ...READ_HINTS },
       inputSchema: {
         q: z.string().min(1).optional().describe("code, title, or actress name, e.g. AVSA-210 (optional if filter set)"),
@@ -417,7 +452,7 @@ function createServer(key: string, baseUrl: string = DEFAULT_BASE_URL): McpServe
     "javinfo-movie",
     {
       description:
-        "Get the full record for one title by its exact DVD id (from javinfo-search). Use the providers arg to pin a source: javdb for download/torrent links, missav for m3u8 streams. Image URLs are omitted by default; set includeImages to append jacket, sample, and gallery URLs.",
+        "Full record for one title by exact DVD id (from javinfo-search or random). Pin providers: javdb=magnets/downloads, missav=remote m3u8 URLs in the response, fanza/dmm/javdatabase=metadata. For a local LAN play URL / player launch use javinfo-open (CLI), not this tool. Image URLs omitted unless includeImages=true.",
       annotations: { title: "javinfo: movie details", ...READ_HINTS },
       inputSchema: {
         q: z.string().min(1).describe("exact DVD id, e.g. AVSA-210"),
@@ -452,7 +487,7 @@ function createServer(key: string, baseUrl: string = DEFAULT_BASE_URL): McpServe
     "javinfo-random",
     {
       description:
-        "Get a batch of random DMM+FANZA titles (full records) — handy for landing pages or discovery. No query or provider pinning; just an optional count. Non-idempotent: a fresh set each call.",
+        "Batch of random DMM+FANZA titles (full records) for discovery. No query/provider pin — optional count only. Non-idempotent. Pass a result dvdId to javinfo-movie for more sources or javinfo-open to play locally (CLI).",
       annotations: { title: "javinfo: random titles", ...RANDOM_HINTS },
       inputSchema: {
         num: z.number().int().min(1).max(50).optional().describe("how many titles (default 20, max 50)"),
@@ -476,7 +511,7 @@ function createServer(key: string, baseUrl: string = DEFAULT_BASE_URL): McpServe
     "javinfo-open",
     {
       description:
-        "Open a local LAN HLS play session for a DVD code via the javinfo CLI (required on PATH, or set JAVINFO_CLI). Auto-starts the serve daemon if needed; returns play_url / meta_url. Optional with launches a configured player (vlc, mpv, …). macOS/Linux only (CLI Unix sockets). Does not call the HTTP API from MCP — the CLI resolves streams.",
+        "Local play session for an exact DVD id (after search/movie when the user wants to watch). Requires javinfo CLI on PATH (or JAVINFO_CLI). Auto-starts serve daemon; returns LAN play_url/meta_url. Prefer asking the user to open in VLC and pass with=\"vlc\" when they agree (default recommendation). Other players (mpv, …) only if requested. Not for metadata/magnets — use javinfo-movie. macOS/Linux only. If CLI missing, returns an install hint.",
       annotations: { title: "javinfo: open local stream", ...OPEN_HINTS },
       inputSchema: {
         q: z.string().min(1).describe("exact DVD id, e.g. EBOD-391"),
@@ -484,7 +519,9 @@ function createServer(key: string, baseUrl: string = DEFAULT_BASE_URL): McpServe
           .string()
           .min(1)
           .optional()
-          .describe("local player id or path (vlc, mpv, …) — passed to `javinfo open --with`"),
+          .describe(
+            'local player to launch — prefer "vlc" after asking the user; also mpv or an absolute path. Omit to return play_url only',
+          ),
         maxHeight: z
           .number()
           .int()
@@ -519,6 +556,54 @@ function createServer(key: string, baseUrl: string = DEFAULT_BASE_URL): McpServe
         return {
           content: [{ type: "text", text: fmtOpen(opened, q, withPlayer) }],
           structuredContent: structured,
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text", text: err?.message || String(err) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    "javinfo-serve",
+    {
+      description:
+        "Control the local javinfo HLS serve daemon via the CLI: start (background), stop, or status. Requires javinfo on PATH (or JAVINFO_CLI). macOS/Linux only. open auto-starts the daemon when opening a title; use this for explicit lifecycle (e.g. stop after playback). status when down returns running=false (not an error).",
+      annotations: { title: "javinfo: serve daemon", ...SERVE_HINTS },
+      inputSchema: {
+        action: z
+          .enum(["start", "stop", "status"])
+          .describe("daemon control: start | stop | status"),
+        port: z
+          .number()
+          .int()
+          .min(1)
+          .max(65535)
+          .optional()
+          .describe("TCP port when starting (default 8787)"),
+        bind: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("bind address when starting (default 0.0.0.0)"),
+        maxHeight: z
+          .number()
+          .int()
+          .min(144)
+          .max(4320)
+          .optional()
+          .describe("daemon default max HLS height when starting (default 1080)"),
+      },
+      outputSchema: serveOutputShape,
+    },
+    async ({ action, port, bind, maxHeight }) => {
+      try {
+        const result = await runJavinfoServe(action, { port, bind, maxHeight });
+        return {
+          content: [{ type: "text", text: fmtServe(result) }],
+          structuredContent: result,
         };
       } catch (err: any) {
         return {
