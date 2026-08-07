@@ -3,7 +3,46 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-const API = "https://api.javinfo.dev";
+import {
+  DEFAULT_BASE_URL,
+  configDir,
+  configPath,
+  loadConfig,
+  mergeApiKeyIntoToml,
+  parseTopLevelStrings,
+  resolveApiKey,
+  resolveBaseUrl,
+  seedApiKeyFromEnv,
+} from "./config.js";
+import {
+  CLI_INSTALL_HINT,
+  buildOpenArgs,
+  cliBinary,
+  extractJsonObject,
+  fmtOpen,
+  parseOpenResult,
+  runJavinfoOpen,
+} from "./cli.js";
+
+// Re-export for unit tests (imported from dist/index.js).
+export {
+  DEFAULT_BASE_URL,
+  configDir,
+  configPath,
+  loadConfig,
+  mergeApiKeyIntoToml,
+  parseTopLevelStrings,
+  resolveApiKey,
+  resolveBaseUrl,
+  seedApiKeyFromEnv,
+  CLI_INSTALL_HINT,
+  buildOpenArgs,
+  cliBinary,
+  extractJsonObject,
+  fmtOpen,
+  parseOpenResult,
+  runJavinfoOpen,
+};
 
 // --- API call -------------------------------------------------------------
 type Path = "query" | "movie" | "random";
@@ -14,13 +53,18 @@ function normProviders(p?: string | string[]): string | undefined {
   return Array.isArray(p) ? p.join(",") : p;
 }
 
-async function postJavinfo(path: Path, body: Record<string, unknown>, key: string) {
-  const res = await fetch(`${API}/${path}`, {
+async function postJavinfo(
+  baseUrl: string,
+  path: Path,
+  body: Record<string, unknown>,
+  key: string,
+) {
+  const res = await fetch(`${baseUrl}/${path}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-javinfo-key": key,
-      "user-agent": "javinfo-mcp/0.1",
+      "user-agent": "javinfo-mcp/0.3",
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
@@ -298,13 +342,29 @@ const sortSchema = z
 const READ_HINTS = { readOnlyHint: true, openWorldHint: true, destructiveHint: false, idempotentHint: true } as const;
 // /random is read-only but non-idempotent (a fresh set each call).
 const RANDOM_HINTS = { readOnlyHint: true, openWorldHint: true, destructiveHint: false, idempotentHint: false } as const;
+// Local open: starts daemon / session / optional player — not read-only or idempotent.
+const OPEN_HINTS = {
+  readOnlyHint: false,
+  openWorldHint: true,
+  destructiveHint: false,
+  idempotentHint: false,
+} as const;
 
-function createServer(key: string): McpServer {
+export const openOutputShape = {
+  q: z.string(),
+  token: z.string(),
+  play_url: z.string(),
+  meta_url: z.string(),
+  meta: z.record(z.string(), z.any()),
+  with: z.string().optional(),
+};
+
+function createServer(key: string, baseUrl: string = DEFAULT_BASE_URL): McpServer {
   const server = new McpServer(
-    { name: "javinfo", version: "0.1.0" },
+    { name: "javinfo", version: "0.4.0" },
     {
       instructions:
-        "Search first with javinfo-search (supports filter/sort/pagination) to find the exact dvdId, then javinfo-movie for the full record. javinfo-random returns random DMM+FANZA titles. Pin providers: javdb=download/torrent links, missav=m3u8 streams, fanza/dmm/javdatabase=metadata.",
+        "Search first with javinfo-search (supports filter/sort/pagination) to find the exact dvdId, then javinfo-movie for the full record. javinfo-random returns random DMM+FANZA titles. On hosts with the javinfo CLI installed, javinfo-open creates a local LAN HLS play URL (auto-starts serve daemon; optional with=vlc|mpv). Pin providers: javdb=download/torrent links, missav=m3u8 streams, fanza/dmm/javdatabase=metadata.",
     },
   );
 
@@ -341,7 +401,7 @@ function createServer(key: string): McpServer {
       if (page != null) body.page = page;
       if (num != null) body.num = num;
       try {
-        const json = await postJavinfo("query", body, key);
+        const json = await postJavinfo(baseUrl, "query", body, key);
         if (!json) {
           const empty = { q: q ?? "", source: null, query: q ?? "", count: 0, results: [] };
           return { content: [{ type: "text", text: fmtSearch(empty) }], structuredContent: empty };
@@ -371,7 +431,7 @@ function createServer(key: string): McpServer {
       const prov = normProviders(providers);
       if (prov) body.providers = prov;
       try {
-        const json = await postJavinfo("movie", body, key);
+        const json = await postJavinfo(baseUrl, "movie", body, key);
         if (!json) {
           return {
             content: [{ type: "text", text: `No match for "${q}" — code likely not indexed.` }],
@@ -403,7 +463,7 @@ function createServer(key: string): McpServer {
       const body: Record<string, unknown> = {};
       if (num != null) body.num = num;
       try {
-        const items: any[] = (await postJavinfo("random", body, key)) ?? [];
+        const items: any[] = (await postJavinfo(baseUrl, "random", body, key)) ?? [];
         const out = { count: items.length, results: items };
         return { content: [{ type: "text", text: fmtRandom(items) }], structuredContent: out };
       } catch (err: any) {
@@ -412,16 +472,78 @@ function createServer(key: string): McpServer {
     },
   );
 
+  server.registerTool(
+    "javinfo-open",
+    {
+      description:
+        "Open a local LAN HLS play session for a DVD code via the javinfo CLI (required on PATH, or set JAVINFO_CLI). Auto-starts the serve daemon if needed; returns play_url / meta_url. Optional with launches a configured player (vlc, mpv, …). macOS/Linux only (CLI Unix sockets). Does not call the HTTP API from MCP — the CLI resolves streams.",
+      annotations: { title: "javinfo: open local stream", ...OPEN_HINTS },
+      inputSchema: {
+        q: z.string().min(1).describe("exact DVD id, e.g. EBOD-391"),
+        with: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("local player id or path (vlc, mpv, …) — passed to `javinfo open --with`"),
+        maxHeight: z
+          .number()
+          .int()
+          .min(144)
+          .max(4320)
+          .optional()
+          .describe("prefer HLS variants with height ≤ this (session override)"),
+        ttl: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe("optional session TTL in hours (default: no expiry)"),
+      },
+      outputSchema: openOutputShape,
+    },
+    async ({ q, with: withPlayer, maxHeight, ttl }) => {
+      try {
+        const opened = await runJavinfoOpen(q, {
+          with: withPlayer,
+          maxHeight,
+          ttl,
+        });
+        const structured = {
+          q,
+          token: opened.token,
+          play_url: opened.play_url,
+          meta_url: opened.meta_url,
+          meta: opened.meta,
+          ...(withPlayer?.trim() ? { with: withPlayer.trim() } : {}),
+        };
+        return {
+          content: [{ type: "text", text: fmtOpen(opened, q, withPlayer) }],
+          structuredContent: structured,
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text", text: err?.message || String(err) }],
+          isError: true,
+        };
+      }
+    },
+  );
+
   return server;
 }
 
 async function main() {
-  const key = process.env.JAVINFO_API_KEY;
+  // If env has a key and config.toml does not, seed so the CLI shares the same store.
+  seedApiKeyFromEnv();
+  const key = resolveApiKey();
   if (!key) {
-    console.error("javinfo-mcp: JAVINFO_API_KEY env var is required.");
+    console.error(
+      "javinfo-mcp: no API key — set JAVINFO_API_KEY or run `javinfo login` (writes ~/.config/javinfo/config.toml).",
+    );
     process.exit(1);
   }
-  await createServer(key).connect(new StdioServerTransport());
+  const baseUrl = resolveBaseUrl();
+  await createServer(key, baseUrl).connect(new StdioServerTransport());
 }
 
 // CLI/stdio server — autostart by default. Env-gated (not entry-point guarded:

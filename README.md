@@ -2,7 +2,8 @@
 
 An MCP server (stdio) for the [javinfo](https://javinfo.dev) API. Look up JAV
 releases by DVD code, title, or actress, and get metadata, download links, or
-stream URLs back.
+stream URLs back. With the [javinfo CLI](https://github.com/javinfo/cli)
+installed, you can also open a **local LAN HLS play session**.
 
 ## Tools
 
@@ -11,8 +12,10 @@ stream URLs back.
 | `javinfo-search` | Search by code, title, or actress — with optional filter, sort, and pagination. Returns a list of matches. |
 | `javinfo-movie` | Fetch one release by exact DVD id. |
 | `javinfo-random` | A batch of random DMM+FANZA titles (full records). |
+| `javinfo-open` | Open a local play session via the **javinfo CLI** (auto-starts serve daemon; returns `play_url`). |
 
-Search first to find the code, then call `javinfo-movie` with it.
+Search first to find the code, then call `javinfo-movie` with it. On a machine
+with the CLI, call `javinfo-open` for a LAN play URL (optional player launch).
 
 `providers` picks where the data comes from:
 
@@ -43,10 +46,45 @@ source). Unpinned, the API skips a provider that can't satisfy a filter and
 tries the next; **pin** a provider that can't and you get a `422` with the
 reason.
 
-## Setup
+### Local open (`javinfo-open`)
 
-Needs a javinfo API key in the `JAVINFO_API_KEY` environment variable.
-Get your free key at [javinfo.dev](https://javinfo.dev).
+Requires the **javinfo CLI** on `PATH` (or set `JAVINFO_CLI` to an absolute
+binary). Install:
+
+```bash
+curl -fsSL https://javinfo.dev/install.sh | bash
+# until that URL is live:
+# curl -fsSL https://raw.githubusercontent.com/javinfo/cli/main/install.sh | bash
+```
+
+| Arg | Required | Meaning |
+|-----|----------|---------|
+| `q` | yes | DVD code (e.g. `EBOD-391`) |
+| `with` | no | Player id/path (`vlc`, `mpv`, …) — `javinfo open --with` |
+| `maxHeight` | no | Prefer variants ≤ this height |
+| `ttl` | no | Session TTL in hours (default: no expiry) |
+
+Returns `play_url` / `meta_url` (and launches a player when `with` is set).
+The CLI auto-starts the serve daemon; the daemon keeps running after MCP exits.
+**macOS / Linux** only for now (CLI control uses Unix sockets).
+
+## Auth & config
+
+API key resolution (same store as the CLI):
+
+1. `JAVINFO_API_KEY` env
+2. `api_key` in `$XDG_CONFIG_HOME/javinfo/config.toml` (fallback `~/.config/javinfo/config.toml`)
+3. error if neither is set
+
+API base URL:
+
+1. `JAVINFO_BASE_URL` env
+2. `base_url` in the same config file
+3. default `https://api.javinfo.dev`
+
+If the env key is set and the config file has no non-empty `api_key`, the server
+**seeds** the key into that file (mode `0600`) so the CLI and MCP share one store.
+An existing non-empty file key is never overwritten.
 
 ```json
 {
@@ -60,11 +98,14 @@ Get your free key at [javinfo.dev](https://javinfo.dev).
 }
 ```
 
+Or run `javinfo login` once and omit the env var from MCP config (key read from
+config.toml). Optional: `JAVINFO_CLI` if the binary is not on `PATH`.
+
 ## Local
 
 ```bash
 npm install
 npm run build
-npm test   # formatter checks
+npm test   # formatter + config + cli unit checks
 JAVINFO_API_KEY=jvi_... npx @modelcontextprotocol/inspector node dist/index.js
 ```
