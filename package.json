@@ -1,6 +1,6 @@
 {
   "name": "@javinfo/mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "MCP (stdio) server for the javinfo API — search, movie details, and local CLI stream open.",
   "private": false,
   "license": "MIT",

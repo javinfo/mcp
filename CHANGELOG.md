@@ -1,5 +1,13 @@
 
 
+# [0.6.0](https://github.com/javinfo/mcp/compare/0.4.0...0.6.0) (2026-08-07)
+
+
+### Features
+
+* add javinfo-open and shared CLI config auth ([e5dc6ed](https://github.com/javinfo/mcp/commit/e5dc6ed7496a40d89e317c43f0e0591d99ba7932))
+* add javinfo-serve and improve open agent guidance ([877d7c5](https://github.com/javinfo/mcp/commit/877d7c5dca3b8ebfeafbd5d04949fab3a96dee8d))
+
 # [0.4.0](https://github.com/javinfo/mcp/compare/0.3.2...0.4.0) (2026-07-16)
 
 
