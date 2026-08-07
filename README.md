@@ -1,5 +1,7 @@
 # @javinfo/mcp
 
+[![MCP Badge](https://lobehub.com/badge/mcp/javinfo-mcp)](https://lobehub.com/mcp/javinfo-mcp)
+
 An MCP server (stdio) for the [javinfo](https://javinfo.dev) API. Look up JAV
 releases by DVD code, title, or actress, and get metadata, download links, or
 stream URLs back. With the [javinfo CLI](https://github.com/javinfo/cli)
