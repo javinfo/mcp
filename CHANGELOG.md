@@ -1,5 +1,7 @@
 
 
+## [0.6.2](https://github.com/javinfo/mcp/compare/0.6.1...0.6.2) (2026-08-07)
+
 ## [0.6.1](https://github.com/javinfo/mcp/compare/0.6.0...0.6.1) (2026-08-07)
 
 # [0.6.0](https://github.com/javinfo/mcp/compare/0.4.0...0.6.0) (2026-08-07)
