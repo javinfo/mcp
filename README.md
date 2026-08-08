@@ -57,8 +57,6 @@ binary). Install:
 
 ```bash
 curl -fsSL https://javinfo.dev/install.sh | bash
-# until that URL is live:
-# curl -fsSL https://raw.githubusercontent.com/javinfo/cli/main/install.sh | bash
 ```
 
 | Arg | Required | Meaning |
