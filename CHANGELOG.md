@@ -1,5 +1,12 @@
 
 
+## [0.7.1](https://github.com/javinfo/mcp/compare/0.7.0...0.7.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **version:** read version from package.json instead of hardcoding ([adc5ceb](https://github.com/javinfo/mcp/commit/adc5ceb333e12a9aa5da3037d4d9e094447bb5e1))
+
 # [0.7.0](https://github.com/javinfo/mcp/compare/0.6.2...0.7.0) (2026-08-25)
 
 
