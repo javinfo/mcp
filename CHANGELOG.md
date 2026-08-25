@@ -1,5 +1,12 @@
 
 
+# [0.7.0](https://github.com/javinfo/mcp/compare/0.6.2...0.7.0) (2026-08-25)
+
+
+### Features
+
+* **api:** send app attribution headers on javinfo calls ([38c76d4](https://github.com/javinfo/mcp/commit/38c76d483b21f024f598101812bc0c7857fee8eb))
+
 ## [0.6.2](https://github.com/javinfo/mcp/compare/0.6.1...0.6.2) (2026-08-07)
 
 ## [0.6.1](https://github.com/javinfo/mcp/compare/0.6.0...0.6.1) (2026-08-07)
