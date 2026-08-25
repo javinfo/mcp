@@ -55,6 +55,16 @@ export {
 // --- API call -------------------------------------------------------------
 type Path = "query" | "movie" | "random";
 
+export const VERSION = "0.6.3";
+
+// App attribution — https://docs.javinfo.dev/docs/attribution
+// Opt-in, free, off the rate limit; lists this server in the public app rankings.
+const ATTRIBUTION_HEADERS = {
+  "HTTP-Referer": "https://github.com/javinfo/mcp",
+  "x-javinfo-title": "javinfo MCP",
+  "x-javinfo-categories": "mcp,ai,cli",
+};
+
 // API accepts providers as a comma string or array; normalize to a string.
 function normProviders(p?: string | string[]): string | undefined {
   if (!p?.length) return undefined;
@@ -72,7 +82,8 @@ async function postJavinfo(
     headers: {
       "content-type": "application/json",
       "x-javinfo-key": key,
-      "user-agent": "javinfo-mcp/0.3",
+      "user-agent": `javinfo-mcp/${VERSION}`,
+      ...ATTRIBUTION_HEADERS,
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
@@ -389,7 +400,7 @@ export const serveOutputShape = {
 
 function createServer(key: string, baseUrl: string = DEFAULT_BASE_URL): McpServer {
   const server = new McpServer(
-    { name: "javinfo", version: "0.4.0" },
+    { name: "javinfo", version: VERSION },
     {
       instructions: [
         "Workflow: javinfo-search (find exact dvdId; filter/sort/pagination supported) → javinfo-movie (full record) → optionally javinfo-open (local LAN play URL when the host has the javinfo CLI).",
