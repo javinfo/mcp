@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { createRequire } from "node:module";
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -55,7 +57,15 @@ export {
 // --- API call -------------------------------------------------------------
 type Path = "query" | "movie" | "random";
 
-export const VERSION = "0.6.3";
+// Read from package.json so the CI release bump is the single source of truth
+// (dist/index.js and src/index.ts are both one level below the package root).
+export const VERSION: string = (() => {
+  try {
+    return createRequire(import.meta.url)("../package.json").version;
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 // App attribution — https://docs.javinfo.dev/docs/attribution
 // Opt-in, free, off the rate limit; lists this server in the public app rankings.
