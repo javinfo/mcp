@@ -1,5 +1,12 @@
 
 
+## [0.7.2](https://github.com/javinfo/mcp/compare/0.7.1...0.7.2) (2026-09-22)
+
+
+### Bug Fixes
+
+* **search:** allow total in javinfo-search output schema ([76a1e83](https://github.com/javinfo/mcp/commit/76a1e836af7925156c5902d0bd0a570630e815e6))
+
 ## [0.7.1](https://github.com/javinfo/mcp/compare/0.7.0...0.7.1) (2026-08-25)
 
 
