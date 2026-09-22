@@ -190,6 +190,7 @@ export const searchOutputShape = {
   source: z.string().nullable(),
   query: z.string().optional(),
   count: z.number().optional(),
+  total: z.number().optional(),
   results: z.array(searchResultSchema),
 };
 export const movieOutputShape = {
